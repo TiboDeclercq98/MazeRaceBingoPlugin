@@ -1,13 +1,14 @@
-package com.example;
+package com.mazebingo;
 
 import net.runelite.client.RuneLite;
 import net.runelite.client.externalplugins.ExternalPluginManager;
 
-public class ExamplePluginTest
+public class MazeBingoPluginTest
 {
+	@SuppressWarnings("unchecked")
 	public static void main(String[] args) throws Exception
 	{
-		ExternalPluginManager.loadBuiltin(ExamplePlugin.class);
+		ExternalPluginManager.loadBuiltin(MazeBingoPlugin.class);
 		RuneLite.main(args);
 	}
 }
