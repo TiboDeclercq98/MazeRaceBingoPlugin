@@ -27,6 +27,8 @@ public class MazeEventNotificationOverlay {
     private static final int RESIZABLE_MODERN_LAYOUT    = (InterfaceID.TOPLEVEL_PRE_EOC << 16) | 13;
     private static final int FIXED_CLASSIC_LAYOUT       = (InterfaceID.TOPLEVEL << 16) | 42;
     private static final int NOTIFICATION_DISPLAY_PANEL = (InterfaceID.NOTIFICATION_DISPLAY << 16) | 1;
+    // No ScriptID constant exists for this script; it initialises the notification popup widget content.
+    private static final int SCRIPT_NOTIFICATION_POPUP_INIT = 3343;
 
     @Inject private Client client;
     @Inject private ClientThread clientThread;
@@ -63,7 +65,7 @@ public class MazeEventNotificationOverlay {
                     : FIXED_CLASSIC_LAYOUT;
 
                 popupWidgetNode = client.openInterface(componentId, InterfaceID.NOTIFICATION_DISPLAY, WidgetModalMode.MODAL_CLICKTHROUGH);
-                client.runScript(3343, "Maze Race Bingo", message, -1);
+                client.runScript(SCRIPT_NOTIFICATION_POPUP_INIT, "Maze Race Bingo", message, -1);
 
                 String lowerMsg = message.toLowerCase();
                 MazeSound sound = lowerMsg.contains("completed the end tile") ? MazeSound.BOBER
