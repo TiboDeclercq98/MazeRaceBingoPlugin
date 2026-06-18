@@ -1,9 +1,7 @@
 package com.mazebingo;
 
 import net.runelite.api.Client;
-import net.runelite.api.gameval.VarbitID;
 import net.runelite.api.WidgetNode;
-import net.runelite.api.gameval.InterfaceID;
 import net.runelite.api.widgets.Widget;
 import net.runelite.api.widgets.WidgetModalMode;
 import net.runelite.client.audio.AudioPlayer;
@@ -23,12 +21,9 @@ public class MazeEventNotificationOverlay {
 
     private static final Logger log = LoggerFactory.getLogger(MazeEventNotificationOverlay.class);
 
-    private static final int RESIZABLE_CLASSIC_LAYOUT   = (InterfaceID.TOPLEVEL_OSRS_STRETCH << 16) | 13;
-    private static final int RESIZABLE_MODERN_LAYOUT    = (InterfaceID.TOPLEVEL_PRE_EOC << 16) | 13;
-    private static final int FIXED_CLASSIC_LAYOUT       = (InterfaceID.TOPLEVEL << 16) | 42;
-    private static final int NOTIFICATION_DISPLAY_PANEL = (InterfaceID.NOTIFICATION_DISPLAY << 16) | 1;
-    // No ScriptID constant exists for this script; it initialises the notification popup widget content.
-    private static final int SCRIPT_NOTIFICATION_POPUP_INIT = 3343;
+    private static final int RESIZABLE_CLASSIC_LAYOUT = (161 << 16) | 13;
+    private static final int RESIZABLE_MODERN_LAYOUT  = (164 << 16) | 13;
+    private static final int FIXED_CLASSIC_LAYOUT     = 35913770;
 
     @Inject private Client client;
     @Inject private ClientThread clientThread;
@@ -36,17 +31,6 @@ public class MazeEventNotificationOverlay {
 
     private WidgetNode popupWidgetNode;
     private final List<String> queue = new ArrayList<>();
-
-    public synchronized void shutdown() {
-        queue.clear();
-        if (popupWidgetNode != null) {
-            try {
-                client.closeInterface(popupWidgetNode, true);
-            } catch (Exception ignored) {
-            }
-            popupWidgetNode = null;
-        }
-    }
 
     public synchronized void addNotification(String message, Color ignored) {
         queue.add(message);
@@ -59,13 +43,13 @@ public class MazeEventNotificationOverlay {
         clientThread.invokeLater(() -> {
             try {
                 int componentId = client.isResized()
-                    ? client.getVarbitValue(VarbitID.RESIZABLE_STONE_ARRANGEMENT) == 1
+                    ? client.getVarbitValue(4607) == 1
                         ? RESIZABLE_MODERN_LAYOUT
                         : RESIZABLE_CLASSIC_LAYOUT
                     : FIXED_CLASSIC_LAYOUT;
 
-                popupWidgetNode = client.openInterface(componentId, InterfaceID.NOTIFICATION_DISPLAY, WidgetModalMode.MODAL_CLICKTHROUGH);
-                client.runScript(SCRIPT_NOTIFICATION_POPUP_INIT, "Maze Race Bingo", message, -1);
+                popupWidgetNode = client.openInterface(componentId, 660, WidgetModalMode.MODAL_CLICKTHROUGH);
+                client.runScript(3343, "Maze Race Bingo", message, -1);
 
                 String lowerMsg = message.toLowerCase();
                 MazeSound sound = lowerMsg.contains("completed the end tile") ? MazeSound.BOBER
@@ -89,7 +73,7 @@ public class MazeEventNotificationOverlay {
     }
 
     private synchronized boolean tryClearMessage() {
-        Widget w = client.getWidget(NOTIFICATION_DISPLAY_PANEL);
+        Widget w = client.getWidget(660, 1);
 
         if (w != null && w.getWidth() > 0) {
             return false;

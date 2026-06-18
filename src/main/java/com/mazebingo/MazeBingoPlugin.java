@@ -9,6 +9,8 @@ import com.mazebingo.model.ProgressResponse;
 import com.mazebingo.model.TileData;
 import net.runelite.api.ChatMessageType;
 import net.runelite.api.Client;
+import net.runelite.api.coords.WorldPoint;
+import net.runelite.api.events.ChatMessage;
 import java.awt.Color;
 import net.runelite.api.GameState;
 import net.runelite.api.NPC;
@@ -22,6 +24,7 @@ import net.runelite.client.chat.ChatMessageManager;
 import net.runelite.client.chat.QueuedMessage;
 import net.runelite.client.eventbus.Subscribe;
 import net.runelite.client.events.NpcLootReceived;
+import net.runelite.client.plugins.loottracker.LootReceived;
 import net.runelite.client.game.ItemManager;
 import net.runelite.client.game.ItemStack;
 import net.runelite.client.plugins.Plugin;
@@ -35,6 +38,7 @@ import com.google.inject.Provides;
 import java.awt.*;
 import java.awt.image.BufferedImage;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
@@ -57,6 +61,31 @@ import java.util.stream.Collectors;
 public class MazeBingoPlugin extends Plugin {
 
     private static final Logger log = LoggerFactory.getLogger(MazeBingoPlugin.class);
+
+    private static final Map<String, int[][]> COURSE_ENDPOINTS;
+    static {
+        Map<String, int[][]> m = new java.util.LinkedHashMap<>();
+        m.put("Gnome", new int[][]{{2484, 3437, 0}, {2487, 3437, 0}});
+        m.put("Draynor", new int[][]{{3103, 3261, 0}});
+        m.put("Al Kharid", new int[][]{{3299, 3194, 0}});
+        m.put("Varrock", new int[][]{{3236, 3417, 0}});
+        m.put("Barbarian", new int[][]{{2543, 3553, 0}});
+        m.put("Canifis", new int[][]{{3510, 3485, 0}});
+        m.put("Falador", new int[][]{{3029, 3332, 0}, {3029, 3333, 0}, {3029, 3334, 0}, {3029, 3335, 0}});
+        m.put("Seers' Village", new int[][]{{2704, 3464, 0}});
+        m.put("Pollnivneach", new int[][]{{3363, 2998, 0}});
+        m.put("Rellekka", new int[][]{{2653, 3676, 0}});
+        m.put("Ardougne", new int[][]{{2668, 3297, 0}});
+        m.put("Pyramid", new int[][]{{3364, 2830, 0}});
+        m.put("Wilderness", new int[][]{{2993, 3933, 0}, {2994, 3933, 0}, {2995, 3933, 0}});
+        m.put("Werewolf", new int[][]{{3528, 9873, 0}});
+        m.put("Prifddinas", new int[][]{{3240, 6109, 0}});
+        m.put("Shayzien Basic", new int[][]{{1554, 3640, 0}});
+        m.put("Shayzien Advanced", new int[][]{{1522, 3625, 0}});
+        m.put("Penguin", new int[][]{{2652, 4039, 1}, {2651, 4039, 1}});
+        m.put("Ape Atoll", new int[][]{{2770, 2747, 0}});
+        COURSE_ENDPOINTS = java.util.Collections.unmodifiableMap(m);
+    }
 
     @Inject private Client client;
     @Inject private MazeBingoConfig config;
@@ -81,6 +110,9 @@ public class MazeBingoPlugin extends Plugin {
     // NPC kill tracking: npcIndex → NPC reference for every NPC the player has hit
     private final Map<Integer, NPC> attackedNpcs = new HashMap<>();
 
+    // Dedup: "tileId:itemName" → game tick of last submit; prevents double-counting when
+    // both onNpcLootReceived and onLootReceived fire for the same NPC kill
+    private final Map<String, Integer> recentSubmits = new HashMap<>();
 
     private ScheduledExecutorService executor;
     private ScheduledFuture<?> pollTask;
@@ -148,12 +180,12 @@ public class MazeBingoPlugin extends Plugin {
         if (executor != null) {
             executor.shutdownNow();
         }
-        notifOverlay.shutdown();
         clientToolbar.removeNavigation(navButton);
         panel.setOnRefresh(null);
         activeTiles.clear();
         xpSnapshot.clear();
         attackedNpcs.clear();
+        recentSubmits.clear();
         lastKnownVersion = null;
         lastSeenEventId = 0;
         eventsInitialized = false;
@@ -171,6 +203,7 @@ public class MazeBingoPlugin extends Plugin {
             activeTiles.clear();
             xpSnapshot.clear();
             attackedNpcs.clear();
+            recentSubmits.clear();
             selectedTileId = -1;
             lastKnownVersion = null;
             lastSeenEventId = 0;
@@ -208,6 +241,40 @@ public class MazeBingoPlugin extends Plugin {
         for (ActiveTile tile : matches) {
             submitProgress(tile, gained, skillName);
         }
+
+        if (event.getSkill() == Skill.AGILITY) {
+            checkAgilityLap();
+        }
+    }
+
+    private void checkAgilityLap() {
+        if (client.getLocalPlayer() == null) return;
+        WorldPoint loc = client.getLocalPlayer().getWorldLocation();
+        for (Map.Entry<String, int[][]> entry : COURSE_ENDPOINTS.entrySet()) {
+            for (int[] ep : entry.getValue()) {
+                if (loc.getX() == ep[0] && loc.getY() == ep[1] && loc.getPlane() == ep[2]) {
+                    String courseName = entry.getKey();
+                    log.info("Agility lap detected: course='{}'", courseName);
+                    List<ActiveTile> matches = matchingTiles("agility_lap",
+                        cfg -> courseMatchesTile(cfg, courseName));
+                    for (ActiveTile tile : matches) {
+                        submitProgress(tile, 1, courseName);
+                    }
+                    return;
+                }
+            }
+        }
+    }
+
+    private static boolean courseMatchesTile(JsonObject cfg, String courseName) {
+        if (cfg.has("courses") && cfg.get("courses").isJsonArray()) {
+            for (com.google.gson.JsonElement el : cfg.getAsJsonArray("courses")) {
+                if (courseName.toLowerCase().contains(el.getAsString().toLowerCase())) return true;
+            }
+            return false;
+        }
+        if (!cfg.has("course")) return true;
+        return courseName.toLowerCase().contains(cfg.get("course").getAsString().toLowerCase());
     }
 
     // --- NPC kills ---
@@ -226,6 +293,7 @@ public class MazeBingoPlugin extends Plugin {
     }
 
     private void checkDeadNpcs() {
+        recentSubmits.entrySet().removeIf(e -> client.getTickCount() - e.getValue() > 1);
         Iterator<Map.Entry<Integer, NPC>> it = attackedNpcs.entrySet().iterator();
         while (it.hasNext()) {
             NPC npc = it.next().getValue();
@@ -233,7 +301,7 @@ public class MazeBingoPlugin extends Plugin {
             it.remove();
             String npcName = npc.getName();
             if (npcName == null) continue;
-            log.debug("Kill detected: npcName='{}'", npcName);
+            log.info("Kill detected: npcName='{}'", npcName);
             List<ActiveTile> matches = matchingTiles("npc_kill", cfg -> {
                 if (cfg.has("npcs") && cfg.get("npcs").isJsonArray()) {
                     for (com.google.gson.JsonElement el : cfg.getAsJsonArray("npcs")) {
@@ -243,14 +311,21 @@ public class MazeBingoPlugin extends Plugin {
                 }
                 return cfg.has("npc") && npcName.equalsIgnoreCase(cfg.get("npc").getAsString());
             });
-            log.debug("Matched {} tile(s) for npc_kill '{}'", matches.size(), npcName);
+            log.info("Matched {} tile(s) for npc_kill '{}'", matches.size(), npcName);
             if (matches.isEmpty()) {
                 // Tile may have just been revealed but not yet loaded — refresh and retry once
                 executor.execute(() -> {
                     refreshMazeState();
-                    List<ActiveTile> retry = matchingTiles("npc_kill", cfg ->
-                        cfg.has("npc") && npcName.equalsIgnoreCase(cfg.get("npc").getAsString()));
-                    log.debug("Retry matched {} tile(s) for npc_kill '{}'", retry.size(), npcName);
+                    List<ActiveTile> retry = matchingTiles("npc_kill", cfg -> {
+                        if (cfg.has("npcs") && cfg.get("npcs").isJsonArray()) {
+                            for (com.google.gson.JsonElement el : cfg.getAsJsonArray("npcs")) {
+                                if (npcName.equalsIgnoreCase(el.getAsString())) return true;
+                            }
+                            return false;
+                        }
+                        return cfg.has("npc") && npcName.equalsIgnoreCase(cfg.get("npc").getAsString());
+                    });
+                    log.info("Retry matched {} tile(s) for npc_kill '{}'", retry.size(), npcName);
                     for (ActiveTile tile : retry) {
                         submitProgress(tile, 1, npcName);
                     }
@@ -268,7 +343,27 @@ public class MazeBingoPlugin extends Plugin {
         attackedNpcs.remove(event.getNpc().getIndex());
     }
 
-    // --- Item drops ---
+    // --- Agility laps & minigame completions ---
+
+    @Subscribe
+    public void onChatMessage(ChatMessage event) {
+        ChatMessageType type = event.getType();
+        if (type != ChatMessageType.SPAM && type != ChatMessageType.GAMEMESSAGE) return;
+
+        String msg = event.getMessage().replaceAll("<[^>]*>", "");
+
+        List<ActiveTile> minigameMatches = matchingTiles("minigame_completion", cfg -> {
+            if (!cfg.has("message")) return false;
+            return msg.toLowerCase().contains(cfg.get("message").getAsString().toLowerCase());
+        });
+        for (ActiveTile tile : minigameMatches) {
+            String minigameName = tile.taskConfig.has("minigame")
+                ? tile.taskConfig.get("minigame").getAsString() : null;
+            submitProgress(tile, 1, minigameName);
+        }
+    }
+
+    // --- Item drops / chest loot ---
 
     @Subscribe
     public void onNpcLootReceived(NpcLootReceived event) {
@@ -287,6 +382,40 @@ public class MazeBingoPlugin extends Plugin {
                 submitProgress(tile, stack.getQuantity(), itemName);
             }
         }
+        submitGpValue(event.getItems());
+    }
+
+    @Subscribe
+    public void onLootReceived(LootReceived event) {
+        for (ItemStack stack : event.getItems()) {
+            String itemName = itemManager.getItemComposition(stack.getId()).getName();
+            List<ActiveTile> matches = matchingTiles("item_drop", cfg -> {
+                if (cfg.has("items") && cfg.get("items").isJsonArray()) {
+                    for (com.google.gson.JsonElement el : cfg.getAsJsonArray("items")) {
+                        if (itemName.equalsIgnoreCase(el.getAsString())) return true;
+                    }
+                    return false;
+                }
+                return cfg.has("item") && itemName.equalsIgnoreCase(cfg.get("item").getAsString());
+            });
+            for (ActiveTile tile : matches) {
+                submitProgress(tile, stack.getQuantity(), itemName);
+            }
+        }
+        submitGpValue(event.getItems());
+    }
+
+    private void submitGpValue(Collection<ItemStack> items) {
+        List<ActiveTile> gpTiles = matchingTiles("gp_value", cfg -> true);
+        if (gpTiles.isEmpty()) return;
+        int totalGp = 0;
+        for (ItemStack stack : items) {
+            totalGp += itemManager.getItemPrice(stack.getId()) * stack.getQuantity();
+        }
+        if (totalGp <= 0) return;
+        for (ActiveTile tile : gpTiles) {
+            submitProgress(tile, totalGp, "gp");
+        }
     }
 
     // --- Internal helpers ---
@@ -299,6 +428,12 @@ public class MazeBingoPlugin extends Plugin {
         String apiUrl = config.apiUrl();
         String team = config.teamName();
         if (team.isEmpty()) return;
+
+        String dedupKey = tile.id + ":" + subCategory;
+        int currentTick = client.getTickCount();
+        Integer lastTick = recentSubmits.get(dedupKey);
+        if (lastTick != null && currentTick - lastTick <= 1) return;
+        recentSubmits.put(dedupKey, currentTick);
 
         executor.execute(() -> {
             ProgressResponse response = apiClient.postProgress(apiUrl, tile.id, playerName, amount, team, subCategory);
@@ -314,10 +449,12 @@ public class MazeBingoPlugin extends Plugin {
                 return;
             }
 
-            log.debug("Progress tile {}: progress={}/{} completed={}", tile.id, response.progress, response.target, response.completed);
+            log.info("Progress tile {}: progress={}/{} completed={}", tile.id, response.progress, response.target, response.completed);
 
             String suffix = "xp_gain".equals(tile.taskType) ? " xp"
                 : "npc_kill".equals(tile.taskType) ? (amount == 1 ? " kill" : " kills")
+                : "agility_lap".equals(tile.taskType) ? " lap"
+                : "minigame_completion".equals(tile.taskType) ? " completion"
                 : "";
             String contrib = amount + (subCategory != null ? " " + subCategory : "") + suffix;
             sendChatMessage("You contributed " + contrib + " to tile " + tile.id + ".");
@@ -390,7 +527,7 @@ public class MazeBingoPlugin extends Plugin {
             return;
         }
 
-        log.debug("Maze state: size={}, tiles={}, gameOver={}", state.size, state.tiles == null ? "null" : state.tiles.size(), state.gameOver);
+        log.info("Maze state: size={}, tiles={}, gameOver={}", state.size, state.tiles == null ? "null" : state.tiles.size(), state.gameOver);
 
         if (state.tileDescriptions != null) {
             tileDescriptions = state.tileDescriptions;
@@ -405,16 +542,16 @@ public class MazeBingoPlugin extends Plugin {
         }
 
         Set<Integer> revealed = MazeRevealCalculator.computeRevealed(state);
-        log.debug("Revealed indices: {}", revealed);
+        log.info("Revealed indices: {}", revealed);
 
         List<ActiveTile> newActive = new ArrayList<>();
         for (int i = 0; i < state.tiles.size(); i++) {
             TileData t = state.tiles.get(i);
-            if (t == null) { log.debug("Tile at index {} is null", i); continue; }
+            if (t == null) { log.info("Tile at index {} is null", i); continue; }
             if (t.completed) continue;
             if (!revealed.contains(i)) continue;
-            if (t.taskType == null) { log.debug("Tile {} (index {}) skipped: taskType is null", t.id, i); continue; }
-            log.debug("Adding tile {} (index {}), taskType={}", t.id, i, t.taskType);
+            if (t.taskType == null) { log.info("Tile {} (index {}) skipped: taskType is null", t.id, i); continue; }
+            log.info("Adding tile {} (index {}), taskType={}", t.id, i, t.taskType);
 
             String desc = "";
             if (state.tileDescriptions != null) {
