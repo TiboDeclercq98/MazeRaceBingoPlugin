@@ -1,39 +1,46 @@
 package com.mazebingo;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import net.runelite.client.RuneLite;
 
 import java.io.ByteArrayInputStream;
-import java.io.IOException;
+import java.io.File;
 import java.io.InputStream;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 
 class SoundGenerator {
 
-    private static final Logger log = LoggerFactory.getLogger(SoundGenerator.class);
     private static final int SAMPLE_RATE = 44100;
+    private static final File SOUNDS_DIR = new File(new File(RuneLite.RUNELITE_DIR, "mazebingo"), "sounds");
 
-    static InputStream generate(MazeSound sound) {
-        switch (sound) {
-            case SHORT_DOG_BARK: return loadWav("/com/mazebingo/sounds/short-dog-bark.wav");
-            case WHIP:            return loadWav("/com/mazebingo/sounds/whip.wav");
-            case BOBER:           return loadWav("/com/mazebingo/sounds/bober_kurwa.wav");
-            case SAD_SOUND:     return loadWav("/com/mazebingo/sounds/sad_sound.wav");
-            default:             return null;
-        }
+    static void ensureSoundsDirExists() {
+        SOUNDS_DIR.mkdirs();
     }
 
-    private static InputStream loadWav(String resource) {
-        try (InputStream in = SoundGenerator.class.getResourceAsStream(resource)) {
-            if (in == null) {
-                log.warn("Sound resource not found on classpath: {}", resource);
-                return null;
-            }
-            return new ByteArrayInputStream(in.readAllBytes());
-        } catch (IOException e) {
-            log.warn("Failed to read sound resource {}", resource, e);
-            return null;
+    /**
+     * A user-supplied file at {@code .runelite/mazebingo/sounds/<name>.wav} that overrides the bundled sound
+     * for this event, or null if no override is present.
+     */
+    static File customFile(MazeSound sound) {
+        String filename = filenameFor(sound);
+        return filename == null ? null : new File(SOUNDS_DIR, filename);
+    }
+
+    /**
+     * Classpath resource path of the bundled sound for this event, or null if this sound has none.
+     */
+    static String classpathResource(MazeSound sound) {
+        String filename = filenameFor(sound);
+        return filename == null ? null : "/com/mazebingo/sounds/" + filename;
+    }
+
+    private static String filenameFor(MazeSound sound) {
+        switch (sound) {
+            case COMPLETION: return "completion.wav";
+            case SPECIAL:     return "special.wav";
+            case SUCCESS:     return "success.wav";
+            case FAIL:        return "fail.wav";
+            default:          return null;
         }
     }
 

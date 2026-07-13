@@ -125,6 +125,7 @@ public class MazeBingoPlugin extends Plugin {
 
     @Override
     protected void startUp() {
+        SoundGenerator.ensureSoundsDirExists();
         executor = Executors.newSingleThreadScheduledExecutor();
         panel.setOnRefresh(() -> executor.execute(this::refreshMazeState));
         panel.setOnTileClick(tile -> {
@@ -197,7 +198,9 @@ public class MazeBingoPlugin extends Plugin {
         if (event.getGameState() == GameState.LOGGED_IN) {
             lastKnownVersion = null;
             executor.execute(this::refreshMazeState);
-            snapshotXp();
+            // Don't call snapshotXp() here — stats aren't fully loaded yet when
+            // LOGGED_IN fires, so the client returns 0 for unloaded skills. The
+            // onStatChanged -1 guard handles initialization safely instead.
         } else if (event.getGameState() == GameState.LOGIN_SCREEN
             || event.getGameState() == GameState.HOPPING) {
             activeTiles.clear();
