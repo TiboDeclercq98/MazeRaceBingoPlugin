@@ -197,7 +197,6 @@ public class MazeBingoPlugin extends Plugin {
         if (event.getGameState() == GameState.LOGGED_IN) {
             lastKnownVersion = null;
             executor.execute(this::refreshMazeState);
-            snapshotXp();
         } else if (event.getGameState() == GameState.LOGIN_SCREEN
             || event.getGameState() == GameState.HOPPING) {
             activeTiles.clear();

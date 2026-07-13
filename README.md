@@ -10,8 +10,8 @@ A RuneLite plugin that automatically tracks task progress for **Maze Race Bingo*
 - **Active tasks panel** — lists all unrevealed / incomplete tiles with progress bars at a glance
 - **Recent events feed** — shows the last 8 game events (tile completions, game-over, etc.) with colour-coded messages
 - **Chat notifications** — in-game messages when you contribute progress or complete a tile
-- **Sound alerts** — audio cues on tile completions and special events
-- **Live sync** — polls for state changes every 10 seconds so the map stays up to date when teammates complete tiles
+- **In-game popups & sound alerts** — a modal popup (with audio cue) appears for new events, even if the sidebar is closed
+- **Live sync** — checks for state changes every 10 seconds and refreshes immediately when teammates complete tiles, with a full refresh every 60 seconds as a fallback
 
 ## Supported task types
 
@@ -21,8 +21,8 @@ A RuneLite plugin that automatically tracks task progress for **Maze Race Bingo*
 | `xp_gain` | Listens to skill XP changes and reports the delta |
 | `item_drop` | Listens to NPC loot and chest loot; matches item names |
 | `gp_value` | Accumulates the GP value of all received loot using live item prices |
-| `agility_lap` | Detects lap completions at 19 courses by chat message and player location |
-| `minigame` | Matches a configured chat message pattern to detect minigame completions |
+| `agility_lap` | Detects lap completions at 19 courses by player location |
+| `minigame_completion` | Matches a configured chat message pattern to detect minigame completions |
 
 ### Agility courses supported
 
@@ -54,6 +54,8 @@ Tiles are revealed when they are the start tile, when they are completed, or whe
 
 ## UI panels
 
+A **Refresh** button in the panel header lets you force an immediate state sync at any time; the status indicator underneath shows the current connection state (Connected / Disconnected / No team configured).
+
 ### Maze map
 A grid of clickable tiles. Click a tile to load its details in the tile info panel. Walls are drawn between completed tiles to indicate which passages are open.
 
@@ -75,11 +77,12 @@ Up to 8 recent events rendered below the map, colour-coded by type:
 - Green — game over
 - Gold — other events
 
-## Chat & sound notifications
+## Chat, popup & sound notifications
 
 After each submission you receive a chat message: *"You contributed X [item/xp] to tile Z."* and, if the tile was completed, a green *"You've completed tile Z!"*
 
-Sound cues play when events arrive:
+Every event returned by the server (tile completions, keys found/missing, game-over, etc.) also triggers an in-game modal popup with a matching sound cue, so you don't need the sidebar open to notice it:
+
 | Trigger | Sound |
 |---------|-------|
 | End tile completed | Bober |
@@ -99,14 +102,21 @@ The status indicator at the top of the panel turns green when the plugin is conn
 
 ## Building locally
 
-Requires Java 11+ and Gradle.
+Requires Java 11+.
 
 ```bash
-cd runelite-plugin
 ./gradlew build
 ```
 
 The compiled JAR ends up in `build/libs/`. Load it as an external plugin in RuneLite's developer mode.
+
+To launch a development client with the plugin loaded:
+
+```bash
+./gradlew run
+```
+
+This starts RuneLite in developer mode; log in with a Jagex account (see the [RuneLite wiki](https://github.com/runelite/runelite/wiki/Using-Jagex-Accounts)) and enable the plugin from the sidebar.
 
 ## Author
 
