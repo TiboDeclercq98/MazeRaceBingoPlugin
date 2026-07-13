@@ -444,7 +444,9 @@ public class MazeBingoPlugin extends Plugin {
 
             if (response.error != null) {
                 log.warn("Progress submit for tile {} returned error: {}", tile.id, response.error);
-                sendChatMessage("<col=ff0000>" + response.error + "</col>");
+                if (config.chatErrorMessages()) {
+                    sendChatMessage("<col=ff0000>" + response.error + "</col>");
+                }
                 refreshMazeState();
                 return;
             }
@@ -457,15 +459,17 @@ public class MazeBingoPlugin extends Plugin {
                 : "minigame_completion".equals(tile.taskType) ? " completion"
                 : "";
             String contrib = amount + (subCategory != null ? " " + subCategory : "") + suffix;
-            sendChatMessage("You contributed " + contrib + " to tile " + tile.id + ".");
+            if (contributionMessageEnabled(tile.taskType)) {
+                sendChatMessage("You contributed " + contrib + " to tile " + tile.id + ".");
+            }
 
-            if (response.completed) {
+            if (response.completed && config.chatCompletionMessages()) {
                 sendChatMessage("<col=00ff00>You've completed tile " + tile.id + "!</col>");
             }
 
             if (response.specialEvent != null && response.specialEvent.isJsonObject()) {
                 JsonObject se = response.specialEvent.getAsJsonObject();
-                if (se.has("message")) {
+                if (se.has("message") && config.chatSpecialEventMessages()) {
                     String seMsg = se.get("message").getAsString();
                     String seType = se.has("type") ? se.get("type").getAsString() : "";
                     String seColor = "gameover".equals(seType) ? "ff0000" : "ffcc00";
@@ -503,6 +507,19 @@ public class MazeBingoPlugin extends Plugin {
         if (!version.equals(lastKnownVersion)) {
             lastKnownVersion = version;
             refreshMazeState();
+        }
+    }
+
+    private boolean contributionMessageEnabled(String taskType) {
+        if (taskType == null) return true;
+        switch (taskType) {
+            case "xp_gain": return config.chatContributionXp();
+            case "npc_kill": return config.chatContributionNpcKill();
+            case "agility_lap": return config.chatContributionAgilityLap();
+            case "minigame_completion": return config.chatContributionMinigame();
+            case "item_drop": return config.chatContributionItemDrop();
+            case "gp_value": return config.chatContributionGpValue();
+            default: return true;
         }
     }
 
@@ -585,7 +602,8 @@ public class MazeBingoPlugin extends Plugin {
                             : "gameover".equals(e.type) ? new Color(76, 175, 80)
                             : new Color(255, 204, 0);
                         panel.addEvent(e.message, color);
-                        notifOverlay.addNotification(e.message, color);
+                        boolean showPopup = !"tile_complete".equals(e.type) || config.tileCompletionPopupEnabled();
+                        notifOverlay.addNotification(e.message, color, showPopup);
                         lastSeenEventId = e.id;
                     }
                 }
