@@ -103,8 +103,8 @@ public class MazeBingoPlugin extends Plugin {
 
     public List<ActiveTile> getActiveTiles() { return activeTiles; }
 
-    // Keyed by Skill.ordinal() — ConcurrentHashMap since event handlers run on client thread
-    // but snapshotXp() can be called from executor thread
+    // Keyed by Skill.ordinal(). Absence (-1 default) means "not yet seen this session";
+    // onStatChanged initializes it on first fire without counting XP.
     private final Map<Integer, Integer> xpSnapshot = new ConcurrentHashMap<>();
 
     // NPC kill tracking: npcIndex → NPC reference for every NPC the player has hit
@@ -163,7 +163,6 @@ public class MazeBingoPlugin extends Plugin {
 
         if (client.getGameState() == GameState.LOGGED_IN) {
             executor.execute(this::refreshMazeState);
-            snapshotXp();
         }
 
         pollTask = executor.scheduleAtFixedRate(this::refreshMazeState, 60, 60, TimeUnit.SECONDS);
@@ -198,6 +197,9 @@ public class MazeBingoPlugin extends Plugin {
         if (event.getGameState() == GameState.LOGGED_IN) {
             lastKnownVersion = null;
             executor.execute(this::refreshMazeState);
+            // Don't call snapshotXp() here — stats aren't fully loaded yet when
+            // LOGGED_IN fires, so the client returns 0 for unloaded skills. The
+            // onStatChanged -1 guard handles initialization safely instead.
         } else if (event.getGameState() == GameState.LOGIN_SCREEN
             || event.getGameState() == GameState.HOPPING) {
             activeTiles.clear();
@@ -459,7 +461,7 @@ public class MazeBingoPlugin extends Plugin {
                 : "minigame_completion".equals(tile.taskType) ? " completion"
                 : "";
             String contrib = amount + (subCategory != null ? " " + subCategory : "") + suffix;
-            if (contributionMessageEnabled(tile.taskType)) {
+            if (response.contributed && contributionMessageEnabled(tile.taskType)) {
                 sendChatMessage("You contributed " + contrib + " to tile " + tile.id + ".");
             }
 
@@ -619,12 +621,6 @@ public class MazeBingoPlugin extends Plugin {
             if (resp != null) {
                 panel.showTileInfo(resp, desc, isBoobytrap);
             }
-        }
-    }
-
-    private void snapshotXp() {
-        for (Skill skill : Skill.values()) {
-            xpSnapshot.put(skill.ordinal(), client.getSkillExperience(skill));
         }
     }
 
