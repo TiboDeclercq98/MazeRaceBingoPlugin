@@ -12,10 +12,15 @@ import java.awt.*;
 
 class TileInfoPanel extends JPanel {
 
+    // Caps how tall the contribution list can grow before it scrolls internally,
+    // so long lists stay fully reachable instead of getting clipped by the outer panel.
+    private static final int CONTRIB_MAX_HEIGHT = 140;
+
     private final JLabel titleLabel;
     private final JLabel taskLabel;
     private final JProgressBar progressBar;
     private final JPanel contribPanel;
+    private final JScrollPane contribScrollPane;
     private Runnable onClose;
 
     TileInfoPanel() {
@@ -83,13 +88,21 @@ class TileInfoPanel extends JPanel {
         contribPanel.setBackground(ColorScheme.DARKER_GRAY_COLOR);
         contribPanel.setAlignmentX(Component.LEFT_ALIGNMENT);
 
+        contribScrollPane = new JScrollPane(contribPanel,
+            ScrollPaneConstants.VERTICAL_SCROLLBAR_AS_NEEDED,
+            ScrollPaneConstants.HORIZONTAL_SCROLLBAR_NEVER);
+        contribScrollPane.setAlignmentX(Component.LEFT_ALIGNMENT);
+        contribScrollPane.setBorder(BorderFactory.createEmptyBorder());
+        contribScrollPane.setBackground(ColorScheme.DARKER_GRAY_COLOR);
+        contribScrollPane.getViewport().setBackground(ColorScheme.DARKER_GRAY_COLOR);
+
         content.add(titleLabel);
         content.add(Box.createRigidArea(new Dimension(0, 3)));
         content.add(taskLabel);
         content.add(Box.createRigidArea(new Dimension(0, 4)));
         content.add(progressBar);
         content.add(Box.createRigidArea(new Dimension(0, 6)));
-        content.add(contribPanel);
+        content.add(contribScrollPane);
 
         add(header, BorderLayout.NORTH);
         add(content, BorderLayout.CENTER);
@@ -107,6 +120,8 @@ class TileInfoPanel extends JPanel {
         progressBar.setValue(0);
         progressBar.setString("…");
         contribPanel.removeAll();
+        contribScrollPane.setPreferredSize(new Dimension(contribScrollPane.getPreferredSize().width, 0));
+        contribScrollPane.setMaximumSize(new Dimension(Integer.MAX_VALUE, 0));
         setVisible(true);
         revalidate();
         repaint();
@@ -126,8 +141,8 @@ class TileInfoPanel extends JPanel {
             if ("npc_kill".equals(data.taskType)) {
                 String npcLabel = buildListLabel(cfg, "npcs", "npc", eachMode);
                 taskLine = eachMode
-                    ? String.format("Kill each: %s — %d / %d kills", npcLabel, data.currentProgress, data.target)
-                    : String.format("Kill %s — %d / %d kills", npcLabel, data.currentProgress, data.target);
+                    ? String.format("Kill each: %s — %,d / %,d kills", npcLabel, data.currentProgress, data.target)
+                    : String.format("Kill %s — %,d / %,d kills", npcLabel, data.currentProgress, data.target);
             } else if ("xp_gain".equals(data.taskType)) {
                 String skillLabel = buildListLabel(cfg, "skills", "skill", eachMode);
                 if (eachMode) {
@@ -139,24 +154,24 @@ class TileInfoPanel extends JPanel {
             } else if ("item_drop".equals(data.taskType) || "loot_item".equals(data.taskType)) {
                 String itemLabel = buildListLabel(cfg, "items", "item", eachMode);
                 taskLine = eachMode
-                    ? String.format("Receive each: %s — %d / %d", itemLabel, data.currentProgress, data.target)
-                    : "Receive " + itemLabel + " — " + data.currentProgress + " / " + data.target;
+                    ? String.format("Receive each: %s — %,d / %,d", itemLabel, data.currentProgress, data.target)
+                    : String.format("Receive %s — %,d / %,d", itemLabel, data.currentProgress, data.target);
             } else if ("agility_lap".equals(data.taskType)) {
                 String courseLabel = buildListLabel(cfg, "courses", "course", eachMode);
                 taskLine = eachMode
-                    ? String.format("Complete laps of each: %s — %d / %d laps", courseLabel, data.currentProgress, data.target)
-                    : String.format("Complete laps of %s — %d / %d laps", courseLabel, data.currentProgress, data.target);
+                    ? String.format("Complete laps of each: %s — %,d / %,d laps", courseLabel, data.currentProgress, data.target)
+                    : String.format("Complete laps of %s — %,d / %,d laps", courseLabel, data.currentProgress, data.target);
             } else if ("minigame_completion".equals(data.taskType)) {
                 String minigameLabel = cfg.has("minigame") ? cfg.get("minigame").getAsString()
                     : cfg.has("message") ? cfg.get("message").getAsString() : "minigame";
-                taskLine = String.format("Complete %s — %d / %d", minigameLabel, data.currentProgress, data.target);
+                taskLine = String.format("Complete %s — %,d / %,d", minigameLabel, data.currentProgress, data.target);
             } else if ("gp_value".equals(data.taskType)) {
                 taskLine = String.format("Collect %,d gp — %,d / %,d gp", data.target, data.currentProgress, data.target);
             } else {
-                taskLine = "Progress: " + data.currentProgress + " / " + data.target;
+                taskLine = String.format("Progress: %,d / %,d", data.currentProgress, data.target);
             }
         } else {
-            taskLine = "Progress: " + data.currentProgress + " / " + data.target;
+            taskLine = String.format("Progress: %,d / %,d", data.currentProgress, data.target);
         }
         taskLabel.setText("<html>" + taskLine + "</html>");
 
@@ -166,7 +181,7 @@ class TileInfoPanel extends JPanel {
             ? String.format("%,d / %,d xp", data.currentProgress, data.target)
             : "gp_value".equals(data.taskType)
             ? String.format("%,d / %,d gp", data.currentProgress, data.target)
-            : data.currentProgress + " / " + data.target);
+            : String.format("%,d / %,d", data.currentProgress, data.target));
 
         contribPanel.removeAll();
         if (eachMode && data.itemProgress != null && !data.itemProgress.isEmpty()) {
@@ -178,8 +193,8 @@ class TileInfoPanel extends JPanel {
                 contribPanel.add(Box.createRigidArea(new Dimension(0, 2)));
                 for (TileProgressResponse.Contribution c : data.contributions) {
                     String text = (c.subCategory != null && !c.subCategory.isEmpty())
-                        ? c.playerName + ": " + c.amount + " " + c.subCategory
-                        : c.playerName + ": " + c.amount;
+                        ? c.playerName + ": " + String.format("%,d", c.amount) + " " + c.subCategory
+                        : c.playerName + ": " + String.format("%,d", c.amount);
                     JLabel l = new JLabel(text);
                     l.setForeground(new Color(140, 140, 140));
                     l.setFont(FontManager.getRunescapeSmallFont());
@@ -194,14 +209,21 @@ class TileInfoPanel extends JPanel {
         } else {
             for (TileProgressResponse.Contribution c : data.contributions) {
                 String text = (c.subCategory != null && !c.subCategory.isEmpty())
-                    ? c.playerName + ": " + c.amount + " " + c.subCategory
-                    : c.playerName + ": " + c.amount;
+                    ? c.playerName + ": " + String.format("%,d", c.amount) + " " + c.subCategory
+                    : c.playerName + ": " + String.format("%,d", c.amount);
                 JLabel l = new JLabel(text);
                 l.setForeground(new Color(170, 170, 170));
                 l.setFont(FontManager.getRunescapeSmallFont());
                 contribPanel.add(l);
             }
         }
+
+        int neededHeight = contribPanel.getPreferredSize().height;
+        int cappedHeight = Math.min(neededHeight, CONTRIB_MAX_HEIGHT);
+        Dimension currentPref = contribScrollPane.getPreferredSize();
+        contribScrollPane.setPreferredSize(new Dimension(currentPref.width, cappedHeight));
+        contribScrollPane.setMaximumSize(new Dimension(Integer.MAX_VALUE, cappedHeight));
+        contribScrollPane.getVerticalScrollBar().setValue(0);
 
         setVisible(true);
         revalidate();
@@ -236,7 +258,7 @@ class TileInfoPanel extends JPanel {
         JProgressBar bar = new JProgressBar(0, ip.target);
         bar.setValue(ip.progress);
         bar.setStringPainted(true);
-        bar.setString(ip.progress + " / " + ip.target);
+        bar.setString(String.format("%,d / %,d", ip.progress, ip.target));
         bar.setForeground(ip.progress >= ip.target ? new Color(76, 175, 80) : new Color(100, 149, 237));
         bar.setBackground(ColorScheme.MEDIUM_GRAY_COLOR);
         bar.setMaximumSize(new Dimension(Integer.MAX_VALUE, 14));
