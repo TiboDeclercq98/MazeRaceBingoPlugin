@@ -10,7 +10,7 @@ A RuneLite plugin that automatically tracks task progress for **Maze Race Bingo*
 - **Active tasks panel** — lists all unrevealed / incomplete tiles with progress bars at a glance
 - **Recent events feed** — shows the last 8 game events (tile completions, game-over, etc.) with colour-coded messages
 - **Chat notifications** — in-game messages when you contribute progress or complete a tile
-- **In-game popups & sound alerts** — a modal popup (with audio cue) appears for new events, even if the sidebar is closed
+- **In-game popups & sound alerts** — a modal popup with an audio cue appears for new events, even if the sidebar is closed. The sound files are not bundled in the plugin; they download once on first startup into `.runelite/plugin-data/mazeracebingo/sounds`, so notifications are silent until that finishes. Drop your own `completion.wav` / `special.wav` / `success.wav` / `fail.wav` in that folder and pick the **Custom** pack to override them.
 - **Live sync** — checks for state changes every 10 seconds and refreshes immediately when teammates complete tiles, with a full refresh every 60 seconds as a fallback
 
 ## Supported task types
@@ -18,11 +18,13 @@ A RuneLite plugin that automatically tracks task progress for **Maze Race Bingo*
 | Type | How it's detected |
 |------|-------------------|
 | `npc_kill` | Tracks hitsplats you apply; reports the kill when the NPC dies |
+| `npc_damage` | Tracks hitsplats you apply; reports the raw damage dealt to matching NPCs |
 | `xp_gain` | Listens to skill XP changes and reports the delta |
 | `item_drop` | Listens to NPC loot and chest loot; matches item names |
 | `gp_value` | Accumulates the GP value of all received loot using live item prices |
-| `agility_lap` | Detects lap completions at 19 courses by player location |
+| `agility_lap` | Detects lap completions at 19 courses from Agility XP drops at course endpoints |
 | `minigame_completion` | Matches a configured chat message pattern to detect minigame completions |
+| `clue_completion` | Detects the reward casket chat message ("You have completed X `<tier>` Treasure Trails") and matches the tier |
 
 ### Agility courses supported
 
@@ -54,8 +56,6 @@ Tiles are revealed when they are the start tile, when they are completed, or whe
 
 ## UI panels
 
-A **Refresh** button in the panel header lets you force an immediate state sync at any time; the status indicator underneath shows the current connection state (Connected / Disconnected / No team configured).
-
 ### Maze map
 A grid of clickable tiles. Click a tile to load its details in the tile info panel. Walls are drawn between completed tiles to indicate which passages are open.
 
@@ -77,6 +77,8 @@ Up to 8 recent events rendered below the map, colour-coded by type:
 - Green — game over
 - Gold — other events
 
+A **Refresh** button in the panel header lets you force an immediate state sync at any time; the status indicator underneath shows the current connection state (Connected / Disconnected / No team configured).
+
 ## Chat, popup & sound notifications
 
 After each submission you receive a chat message: *"You contributed X [item/xp] to tile Z."* and, if the tile was completed, a green *"You've completed tile Z!"*
@@ -90,7 +92,22 @@ Every event returned by the server (tile completions, keys found/missing, game-o
 | Keys missing | Fail |
 | Other events | Completion |
 
-Sounds can be muted or have their volume adjusted in the plugin config panel. To replace a sound with your own, drop a `.wav` file named `success.wav`, `special.wav`, `fail.wav`, or `completion.wav` into `.runelite/mazebingo/sounds/` (created automatically on first plugin startup) — it overrides the bundled sound for that event.
+Sounds can be muted or have their volume adjusted in the plugin config panel. The **Sound files** dropdown chooses which set of sounds to play:
+
+| Option | Behaviour |
+|--------|-----------|
+| Meme | The four category sounds shown in the table above. |
+| Lore | A per-tile set: each maze tile plays its own numbered sound, with dedicated end-tile sounds. |
+| Custom | Your own files from the plugin's sounds folder, falling back to the Meme sound for any file you have not supplied. |
+
+**Lore** gives every tile its own sound instead of one shared "completion" cue:
+
+- Completing the tile numbered *N* on the map plays `lore/N.wav` (e.g. tile 3 → `3.wav`).
+- Completing the end tile plays `lore/success.wav`; trying to finish it without all the keys plays `lore/fail.wav`.
+- Booby-trap key-found events are silent in this pack.
+- Any tile without a matching `N.wav` falls back to the Meme *completion* sound, so only the tiles you care about need their own recording.
+
+To use **custom** sounds, select **Custom** and drop a `.wav` file named `success.wav`, `special.wav`, `fail.wav`, or `completion.wav` into the plugin's sounds folder (the exact path is logged on startup; sounds you previously kept in `.runelite/mazebingo/sounds/` are migrated there automatically). Any file you omit falls back to the matching Meme sound.
 
 ## Setup
 
@@ -101,6 +118,24 @@ Sounds can be muted or have their volume adjusted in the plugin config panel. To
 3. Log in to Old School RuneScape. The plugin connects automatically and the maze map appears in the sidebar.
 
 The status indicator at the top of the panel turns green when the plugin is connected and a team name is configured.
+
+### Chat message settings
+
+Each task type has its own checkbox (under **Chat Messages** in the config panel) controlling whether "You contributed..." messages for that type are sent to your chatbox. All default to on and only affect your own chat.
+
+| Setting | Description |
+|---|---|
+| XP gain contributions | Show contribution messages for `xp_gain` tiles |
+| NPC kill contributions | Show contribution messages for `npc_kill` tiles |
+| NPC damage contributions | Show contribution messages for `npc_damage` tiles |
+| Agility lap contributions | Show contribution messages for `agility_lap` tiles |
+| Minigame completion contributions | Show contribution messages for `minigame_completion` tiles |
+| Clue completion contributions | Show contribution messages for `clue_completion` tiles |
+| Item drop contributions | Show contribution messages for `item_drop` tiles |
+| GP value contributions | Show contribution messages for `gp_value` tiles |
+| Error messages | Show an error message when a progress submission fails |
+| Tile completion messages | Show a message when you complete a tile |
+| Special event messages | Show special event messages (e.g. game over, bonus events) |
 
 ## Building locally
 
