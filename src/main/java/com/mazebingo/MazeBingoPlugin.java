@@ -39,9 +39,11 @@ import net.runelite.client.config.ConfigManager;
 import com.google.inject.Provides;
 import java.awt.*;
 import java.awt.image.BufferedImage;
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -57,7 +59,15 @@ import java.util.stream.Collectors;
 @PluginDescriptor(
     name = "Maze Race Bingo",
     description = "Automatically tracks task progress for Maze Race Bingo",
-    tags = {"maze", "race", "bingo", "tracker", "task"}
+    tags = {"maze", "race", "bingo", "tracker", "task"},
+    // Names the plugin data directory (.runelite/plugin-data/mazeracebingo) that getPluginDirectory()
+    // hands to MazeSoundManager. Must stay identical to this plugin's manifest filename in the PluginHub
+    // repository: changing it later would strand every user's downloaded sounds in the old folder.
+    internalName = "mazeracebingo",
+    // Custom sounds used to live in .runelite/mazebingo/sounds; RuneLite moves that whole folder into
+    // the plugin data directory the first time getPluginDirectory() is called, so existing overrides
+    // land where MazeSoundManager now looks for them.
+    legacyDataDirectory = "mazebingo"
 )
 public class MazeBingoPlugin extends Plugin {
 
@@ -96,6 +106,7 @@ public class MazeBingoPlugin extends Plugin {
     @Inject private ItemManager itemManager;
     @Inject private ChatMessageManager chatMessageManager;
     @Inject private MazeEventNotificationOverlay notifOverlay;
+    @Inject private MazeSoundManager soundManager;
 
     private final List<ActiveTile> activeTiles = new CopyOnWriteArrayList<>();
     private volatile Map<String, String> tileDescriptions = new HashMap<>();
@@ -132,7 +143,14 @@ public class MazeBingoPlugin extends Plugin {
 
     @Override
     protected void startUp() {
-        SoundGenerator.ensureSoundsDirExists();
+        try {
+            soundManager.init(getPluginDirectory());
+            soundManager.ensureDownloaded();
+        } catch (IOException e) {
+            // Sounds are a nicety; everything else about the plugin still works without them.
+            log.warn("Could not open the plugin directory; notification sounds are unavailable", e);
+        }
+
         executor = Executors.newSingleThreadScheduledExecutor();
         panel.setOnRefresh(() -> executor.execute(this::refreshMazeState));
         panel.setOnTileClick(tile -> {
@@ -187,6 +205,7 @@ public class MazeBingoPlugin extends Plugin {
         if (executor != null) {
             executor.shutdownNow();
         }
+        notifOverlay.shutdown();
         clientToolbar.removeNavigation(navButton);
         panel.setOnRefresh(null);
         activeTiles.clear();
@@ -607,10 +626,15 @@ public class MazeBingoPlugin extends Plugin {
         }
     }
 
+    // Pink [MazeRaceBingo] prefix as native chat markup. Built as a raw string (not via
+    // ChatMessageBuilder.append) because append() escapes angle brackets, which would break
+    // the <col=..> tags that callers already embed in their messages.
+    private static final String CHAT_PREFIX = "<col=ff6ec7>[MazeRaceBingo]</col> ";
+
     private void sendChatMessage(String message) {
         chatMessageManager.queue(QueuedMessage.builder()
             .type(ChatMessageType.GAMEMESSAGE)
-            .runeLiteFormattedMessage(message)
+            .runeLiteFormattedMessage(CHAT_PREFIX + message)
             .build());
     }
 
@@ -687,7 +711,7 @@ public class MazeBingoPlugin extends Plugin {
                             : new Color(255, 204, 0);
                         panel.addEvent(e.message, color);
                         boolean showPopup = !"tile_complete".equals(e.type) || config.tileCompletionPopupEnabled();
-                        notifOverlay.addNotification(e.message, color, showPopup);
+                        notifOverlay.addNotification(e, color, showPopup);
                         lastSeenEventId = e.id;
                     }
                 }
